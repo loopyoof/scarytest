@@ -142,6 +142,12 @@ int main(int argc, char **argv)
 #if CRASH_MODE == 1
         SDL_Texture *err = load_image(ren, ERROR_IMAGE);
         if (err) shown = err;
+        for (int i = 0; i < 2; i++) {                // blank screen for a moment first
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+            SDL_RenderClear(ren);
+            SDL_RenderPresent(ren);
+        }
+        SDL_Delay(1000);                             // length of the blank, in milliseconds
 #endif
         for (int i = 0; i < 3; i++) {                // draw a few times so both buffers match
             SDL_RenderClear(ren);
