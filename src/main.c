@@ -4,7 +4,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_mixer.h>
-#include <coreinit/fatal.h>   // OSFatal (if this header is missing, see CRASH_MODE 1)
+   #include <coreinit/debug.h>
+   void OSFatal(const char *msg);
 #include <stdio.h>
 
 // ---- settings ----
