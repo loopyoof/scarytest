@@ -5,8 +5,8 @@ DEVKITPPC ?= $(DEVKITPRO)/devkitPPC
 
 
 TARGET  := scarytest
-NAME    := BAD WEATHER SAVES
-SHORT   := BAD WEATHER SAVES
+NAME    := BAD WEATHER SAVES...
+SHORT   := BAD WEATHER SAVES...
 AUTHOR  := Satan
 ICON    := assets/icon.png
 TV_IMG  := assets/splash_tv.png
