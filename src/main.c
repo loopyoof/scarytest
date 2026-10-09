@@ -1,26 +1,64 @@
-// Wii U homebrew prototype: plays a JPEG-frame video + OGG audio, then "crashes".
-// Runs from RAM only. Writes nothing to the console. Power-cycle to recover.
+// Wii U homebrew prototype: plays a JPEG-frame video + OGG audio, optional rumble
+// and timed sound, then fakes a crash. Runs from RAM only. Power-cycle to recover.
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_mixer.h>
-   #include <coreinit/debug.h>
-   void OSFatal(const char *msg);
+#include <coreinit/debug.h>
+#include <vpad/input.h>
 #include <stdio.h>
+#include <string.h>
+
+void OSFatal(const char *msg);
 
 // ---- settings ----
-#define MEDIA_DIR       "fs:/vol/external01/wiiu/scarytest"  // SD card folder
-#define FPS             15       // must match make_assets.py
-#define DEBUG_NO_CRASH  0        // 1 = just exit to menu after the video (use while testing!)
-#define CRASH_MODE      0        // 0 = OSFatal error screen, 1 = black-screen freeze
-#define CRASH_PAUSE_MS  1500     // black screen before the crash
-#define CRASH_MSG       "The day of the crime, the father went to the trunk of his car, retrieved the rifle, and shot his wife as she was cleaning up the kitchen after lunch. When his ten-year-old son came to investigate the commotion, the father shot him, too. His six-year-old daughter had the good sense to hide in the bathroom, but reports suggest he lured her out by telling her it was just a game. The girl was found shot once in the chest from point-blank range. The mother, who he shot in the stomach, was pregnant at the time. Police arriving on-scene after neighbors called 911 found the father in his car, listening to the radio. Several days before the murders, neighbors say they heard the father repeating a sequence of numbers in a loud voice. They said it was like he was chanting some strange spell. There was another family shot to death in the same state last month, and in December last year, a man used a rifle and meat cleaver to murder his entire family. In each case, the perpretrators were fathers. State police say the string of domestic homicides appears unrelated, though it could be part of a larger trend, such as employment, childcare, and other social issues facing the average family."
+#define MEDIA_DIR       "fs:/vol/external01/wiiu/scarytest"
+#define FPS             15       // must match the ffmpeg conversion
+#define DEBUG_NO_CRASH  0        // 1 = just exit after the video (for testing)
+#define CRASH_MODE      1        // 0 = freeze last frame + buzz
+                                 // 1 = show error.png + buzz
+                                 // 2 = OSFatal system error screen
+#define CRASH_MSG       "A fatal error has occurred."   // only used by mode 2
+#define RUMBLE_START_MS 10000    // rumble starts this far into the video (0 = no rumble)
+#define STING_MS        20000    // optional sound at this time (needs sting.ogg on the SD card)
+#define STING_FILE      MEDIA_DIR "/sting.ogg"
+#define ERROR_IMAGE     MEDIA_DIR "/error.png"
 // ------------------
 
-static SDL_Texture *load_frame(SDL_Renderer *r, int idx)
+static void rumble_on(void)
 {
-    char path[256];
-    snprintf(path, sizeof(path), MEDIA_DIR "/frames/f%05d.jpg", idx);
+    uint8_t pattern[120];
+    memset(pattern, 0xFF, sizeof(pattern));
+    VPADControlMotor(VPAD_CHAN_0, pattern, sizeof(pattern));
+}
+
+static void rumble_off(void) { VPADStopMotor(VPAD_CHAN_0); }
+
+// Generates a harsh 1-second looping buzz (two square waves an octave apart).
+static Mix_Chunk *make_buzz(void)
+{
+    int freq, channels;
+    Uint16 format;
+    if (!Mix_QuerySpec(&freq, &format, &channels)) return NULL;
+
+    int period = freq / 200;                 // about 200 Hz
+    int samples = period * 200;              // whole number of periods = clean loop
+    int bytes = samples * channels * (int)sizeof(Sint16);
+    Sint16 *buf = (Sint16 *)SDL_malloc(bytes);
+    if (!buf) return NULL;
+
+    for (int i = 0; i < samples; i++) {
+        Sint16 a = ((i % period) < period / 2) ? 7000 : -7000;
+        Sint16 b = ((i % (period / 2)) < period / 4) ? 7000 : -7000;
+        for (int c = 0; c < channels; c++) buf[i * channels + c] = a + b;
+    }
+    Mix_Chunk *chunk = Mix_QuickLoad_RAW((Uint8 *)buf, bytes);
+    if (chunk) Mix_VolumeChunk(chunk, MIX_MAX_VOLUME);
+    return chunk;
+}
+
+static SDL_Texture *load_image(SDL_Renderer *r, const char *path)
+{
     SDL_Surface *s = IMG_Load(path);
     if (!s) return NULL;
     SDL_Texture *t = SDL_CreateTextureFromSurface(r, s);
@@ -28,12 +66,20 @@ static SDL_Texture *load_frame(SDL_Renderer *r, int idx)
     return t;
 }
 
+static SDL_Texture *load_frame(SDL_Renderer *r, int idx)
+{
+    char path[256];
+    snprintf(path, sizeof(path), MEDIA_DIR "/frames/f%05d.jpg", idx);
+    return load_image(r, path);
+}
+
 int main(int argc, char **argv)
 {
     (void)argc; (void)argv;
 
+    VPADInit();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) return 1;
-    IMG_Init(IMG_INIT_JPG);
+    IMG_Init(IMG_INIT_JPG | IMG_INIT_PNG);
     Mix_Init(MIX_INIT_OGG);
     Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048);
 
@@ -41,10 +87,14 @@ int main(int argc, char **argv)
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     Mix_Music *music = Mix_LoadMUS(MEDIA_DIR "/audio.ogg");
+    Mix_Chunk *sting = Mix_LoadWAV(STING_FILE);   // NULL if the file is missing, that's fine
+    Mix_Chunk *buzz = make_buzz();
 
     SDL_Texture *tex = NULL;
     int cur = -1;
     int user_quit = 0;
+    int sting_played = 0;
+    Uint32 next_rumble = RUMBLE_START_MS;
 
     if (music) Mix_PlayMusic(music, 0);
     Uint32 start = SDL_GetTicks();
@@ -55,7 +105,20 @@ int main(int argc, char **argv)
             if (e.type == SDL_QUIT) user_quit = 1;   // HOME button exits cleanly
         }
 
-        int idx = 1 + (int)((SDL_GetTicks() - start) * FPS / 1000);
+        Uint32 elapsed = SDL_GetTicks() - start;
+
+        if (RUMBLE_START_MS > 0 && elapsed >= next_rumble) {
+            rumble_on();
+            next_rumble = elapsed + 500;
+        }
+
+        if (sting && !sting_played && elapsed >= STING_MS) {
+            Mix_VolumeChunk(sting, MIX_MAX_VOLUME);
+            Mix_PlayChannel(-1, sting, 0);
+            sting_played = 1;
+        }
+
+        int idx = 1 + (int)(elapsed * FPS / 1000);
         if (idx != cur) {
             SDL_Texture *next = load_frame(ren, idx);
             if (!next) break;                        // no more frames = video over
@@ -65,31 +128,47 @@ int main(int argc, char **argv)
         }
 
         SDL_RenderClear(ren);
-        SDL_RenderCopy(ren, tex, NULL, NULL);        // stretch to full screen
+        SDL_RenderCopy(ren, tex, NULL, NULL);
         SDL_RenderPresent(ren);
     }
 
-    if (tex) SDL_DestroyTexture(tex);
-    Mix_HaltMusic();
-
     if (!user_quit && !DEBUG_NO_CRASH) {
-        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
-        SDL_RenderClear(ren);
-        SDL_RenderPresent(ren);
-        SDL_Delay(CRASH_PAUSE_MS);
+        Mix_HaltMusic();
 
-#if CRASH_MODE == 0
+#if CRASH_MODE == 2
         OSFatal(CRASH_MSG);
 #else
-        for (;;) SDL_Delay(1000);                    // frozen black screen
+        SDL_Texture *shown = tex;                    // mode 0: keep the last video frame
+#if CRASH_MODE == 1
+        SDL_Texture *err = load_image(ren, ERROR_IMAGE);
+        if (err) shown = err;
+        for (int i = 0; i < 2; i++) {                // blank screen for a moment first
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+            SDL_RenderClear(ren);
+            SDL_RenderPresent(ren);
+        }
+        SDL_Delay(1000);                             // length of the blank, in milliseconds
+#endif
+        for (int i = 0; i < 3; i++) {                // draw a few times so both buffers match
+            SDL_RenderClear(ren);
+            SDL_RenderCopy(ren, shown, NULL, NULL);
+            SDL_RenderPresent(ren);
+        }
+        if (buzz) Mix_PlayChannel(-1, buzz, -1);     // loop the buzz forever
+        for (;;) SDL_Delay(1000);                    // frozen until power is held
 #endif
     }
 
+    if (tex) SDL_DestroyTexture(tex);
+    rumble_off();
+    Mix_HaltMusic();
     if (music) Mix_FreeMusic(music);
+    if (sting) Mix_FreeChunk(sting);
     Mix_CloseAudio();
     IMG_Quit();
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
+    VPADShutdown();
     return 0;
 }
