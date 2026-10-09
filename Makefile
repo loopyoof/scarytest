@@ -22,8 +22,8 @@ CFLAGS   := -O2 -Wall -ffunction-sections -fdata-sections $(ARCH) -D__WIIU__ -D_
             -I$(WUT)/include -I$(PORTLIBS)/include -I$(PORTLIBS)/include/SDL2 -I$(PPCLIBS)/include
 LDFLAGS  := $(ARCH) -specs=$(WUT)/share/wut.specs -Wl,--gc-sections \
             -L$(WUT)/lib -L$(PORTLIBS)/lib -L$(PPCLIBS)/lib
-
-LIBS     := -lSDL2_mixer -lSDL2_image -lSDL2 -lvorbisfile -lvorbis -logg -lmpg123 -ljpeg -lpng -lz -lwut -lm
+PCLIBS   := $(shell $(PORTLIBS)/bin/powerpc-eabi-pkg-config --static --libs SDL2_mixer SDL2_image 2>/dev/null)
+   LIBS     := -lSDL2_mixer -lSDL2_image -lSDL2 $(PCLIBS) -lmodplug -lwebp -lstdc++ -lvorbisfile -lvorbis -logg -lmpg123 -ljpeg -lpng -lz -lwut -lm
 
 all: $(TARGET).wuhb
 
