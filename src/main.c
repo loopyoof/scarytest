@@ -11,7 +11,7 @@
 // ---- settings ----
 #define MEDIA_DIR       "fs:/vol/external01/wiiu/scarytest"  // SD card folder
 #define FPS             15       // must match make_assets.py
-#define DEBUG_NO_CRASH  1        // 1 = just exit to menu after the video (use while testing!)
+#define DEBUG_NO_CRASH  0        // 1 = just exit to menu after the video (use while testing!)
 #define CRASH_MODE      0        // 0 = OSFatal error screen, 1 = black-screen freeze
 #define CRASH_PAUSE_MS  1500     // black screen before the crash
 #define CRASH_MSG       "A fatal error has occurred."
