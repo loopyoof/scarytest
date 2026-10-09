@@ -13,7 +13,7 @@
 #define DEBUG_NO_CRASH  1        // 1 = just exit to menu after the video (use while testing!)
 #define CRASH_MODE      0        // 0 = OSFatal error screen, 1 = black-screen freeze
 #define CRASH_PAUSE_MS  1500     // black screen before the crash
-#define CRASH_MSG       "A fatal error has occurred."
+#define CRASH_MSG       "The day of the crime, the father went to the trunk of his car, retrieved the rifle, and shot his wife as she was cleaning up the kitchen after lunch. When his ten-year-old son came to investigate the commotion, the father shot him, too. His six-year-old daughter had the good sense to hide in the bathroom, but reports suggest he lured her out by telling her it was just a game. The girl was found shot once in the chest from point-blank range. The mother, who he shot in the stomach, was pregnant at the time. Police arriving on-scene after neighbors called 911 found the father in his car, listening to the radio. Several days before the murders, neighbors say they heard the father repeating a sequence of numbers in a loud voice. They said it was like he was chanting some strange spell. There was another family shot to death in the same state last month, and in December last year, a man used a rifle and meat cleaver to murder his entire family. In each case, the perpretrators were fathers. State police say the string of domestic homicides appears unrelated, though it could be part of a larger trend, such as employment, childcare, and other social issues facing the average family."
 // ------------------
 
 static SDL_Texture *load_frame(SDL_Renderer *r, int idx)
